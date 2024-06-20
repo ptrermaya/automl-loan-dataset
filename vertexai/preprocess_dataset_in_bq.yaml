@@ -1,0 +1,115 @@
+# PIPELINE DEFINITION
+# Name: preprocess-dataset-in-bq
+# Inputs:
+#    dataset: str
+#    location: str
+#    project: str
+#    table: str
+# Outputs:
+#    preprocess_result: str
+components:
+  comp-preprocess-dataset-in-bq:
+    executorLabel: exec-preprocess-dataset-in-bq
+    inputDefinitions:
+      parameters:
+        dataset:
+          parameterType: STRING
+        location:
+          parameterType: STRING
+        project:
+          parameterType: STRING
+        table:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        preprocess_result:
+          parameterType: STRING
+deploymentSpec:
+  executors:
+    exec-preprocess-dataset-in-bq:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - preprocess_dataset_in_bq
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'google-cloud-bigquery'\
+          \ 'db-dtypes' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef preprocess_dataset_in_bq(\n    project: str,\n    location: str,\
+          \ \n    dataset: str,\n    table: str,\n) -> NamedTuple(\"Outputs\", [(\"\
+          preprocess_result\", str)]):\n    from google.cloud import bigquery\n  \
+          \  client = bigquery.Client(project=project, location=location)\n    QUERY\
+          \ = f'''CREATE OR REPLACE TABLE `{dataset}.{table}_preprocessed` AS\nSELECT\n\
+          \    *,\n    ML.LABEL_ENCODER(purpose, 7, 5) OVER () AS purpose_encoded,\n\
+          \    CASE \n      WHEN fico < 580 THEN 1\n      WHEN fico <= 669 THEN 2\n\
+          \      WHEN fico <= 739 THEN 3\n      WHEN fico <= 799 THEN 4\n      ELSE\
+          \ 5\n    END AS fico_encoded\nFROM\n    `{dataset}.{table}`;\n\nALTER TABLE\
+          \ `demo_dataset_3.loan_data_preprocessed` DROP COLUMN IF EXISTS purpose;\n\
+          ALTER TABLE `demo_dataset_3.loan_data_preprocessed` DROP COLUMN IF EXISTS\
+          \ fico;\n'''\n    try:\n        query_job = client.query(QUERY)\n      \
+          \  query_job.result()\n        preprocess_result = 'true'\n    except Exception\
+          \ as e:\n        print(e)\n        preprocess_result = 'false'\n    return\
+          \ (preprocess_result, )\n\n"
+        image: python:3.7
+pipelineInfo:
+  name: preprocess-dataset-in-bq
+root:
+  dag:
+    outputs:
+      parameters:
+        preprocess_result:
+          valueFromParameter:
+            outputParameterKey: preprocess_result
+            producerSubtask: preprocess-dataset-in-bq
+    tasks:
+      preprocess-dataset-in-bq:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-preprocess-dataset-in-bq
+        inputs:
+          parameters:
+            dataset:
+              componentInputParameter: dataset
+            location:
+              componentInputParameter: location
+            project:
+              componentInputParameter: project
+            table:
+              componentInputParameter: table
+        taskInfo:
+          name: preprocess-dataset-in-bq
+  inputDefinitions:
+    parameters:
+      dataset:
+        parameterType: STRING
+      location:
+        parameterType: STRING
+      project:
+        parameterType: STRING
+      table:
+        parameterType: STRING
+  outputDefinitions:
+    parameters:
+      preprocess_result:
+        parameterType: STRING
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.7.0
