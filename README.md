@@ -57,7 +57,7 @@ The dataset has no empty data and has the following columns: :
 
 - **not.fully.paid**
   ![Not fully paid distribution](not.fully.paid.png)
-  Mostly borrower not fully paid and there is imbalanced data
+  Mostly borrower fully paid and there is imbalanced data
 - **purpose**
   
   ![Purpose distribution](purpose.png)
